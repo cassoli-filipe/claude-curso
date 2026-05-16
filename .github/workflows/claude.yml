@@ -1,0 +1,57 @@
+name: Claude Code
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+  issues:
+    types: [opened, assigned]
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  claude:
+    if: |
+      (github.event_name == 'issue_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review_comment' && contains(github.event.comment.body, '@claude')) ||
+      (github.event_name == 'pull_request_review' && contains(github.event.review.body, '@claude')) ||
+      (github.event_name == 'issues' && (contains(github.event.issue.body, '@claude') || contains(github.event.issue.assignees.*.login, 'claude')))
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Project Setup
+        run: npm run setup
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+          custom_instructions: |
+            This is a Next.js 15 app (UIGen) where users describe React components and see a live preview.
+            All dependencies are installed. The SQLite database is at prisma/dev.db and can be queried with the 'sqlite3' CLI.
+            The dev server is NOT running in CI — do not assume localhost:3000 is available.
+            Main entry points: src/app/api/chat/route.ts (AI flow), src/lib/file-system.ts (virtual FS), src/lib/transform/jsx-transformer.ts (preview pipeline).
+          allowed_tools: "Bash(npm:*),Bash(npx:*),Bash(sqlite3:*),Read,Write,Edit,Glob,Grep"
+          mcp_config: |
+            {
+              "mcpServers": {
+                "playwright": {
+                  "command": "npx",
+                  "args": [
+                    "@playwright/mcp@latest",
+                    "--allowed-origins",
+                    "localhost:3000;cdn.tailwindcss.com;esm.sh"
+                  ]
+                }
+              }
+            }
